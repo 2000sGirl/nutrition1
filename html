@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nutrition Check</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #cbd5e1;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --secondary: #e2e8f0;
+      --secondary-hover: #cbd5e1;
+      --error: #dc2626;
+      --total-bg: #f1f5f9;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 2rem 1rem;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 1.5rem;
+      font-size: 1.875rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    input[type="password"],
+    input[type="text"] {
+      flex: 1 1 260px;
+      padding: 0.55rem 0.75rem;
+      font-size: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+
+    button {
+      padding: 0.55rem 1rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background-color: var(--primary);
+      color: #ffffff;
+    }
+
+    button.primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    button.secondary {
+      background-color: var(--secondary);
+      color: var(--text);
+    }
+
+    button.secondary:hover {
+      background-color: var(--secondary-hover);
+    }
+
+    .key-status {
+      margin: 0.6rem 0 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .message {
+      margin: 0.75rem 0 0;
+      font-weight: 500;
+    }
+
+    .error {
+      color: var(--error);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th,
+    td {
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border);
+      text-align: right;
+    }
+
+    th:first-child,
+    td:first-child {
+      text-align: left;
+    }
+
+    thead th {
+      background-color: var(--total-bg);
+      font-weight: 600;
+    }
+
+    tfoot td {
+      background-color: var(--total-bg);
+      font-weight: 700;
+    }
+
+    footer {
+      margin-top: 2rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    footer a {
+      color: var(--primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Nutrition Check</h1>
+
+    <section class="card">
+      <label for="api-key-input">Your API-Ninjas key</label>
+      <div class="row">
+        <input
+          type="password"
+          id="api-key-input"
+          placeholder="Paste your API-Ninjas key"
+          autocomplete="off"
+        />
+        <button type="button" id="save-key-btn" class="primary">Save</button>
+        <button type="button" id="forget-key-btn" class="secondary">Forget</button>
+      </div>
+      <p id="key-status" class="key-status"></p>
+    </section>
+
+    <section class="card">
+      <form id="nutrition-form">
+        <label for="food-input">What did you eat?</label>
+        <div class="row">
+          <input
+            type="text"
+            id="food-input"
+            placeholder="e.g., 2 eggs and a slice of whole wheat toast"
+          />
+          <button type="submit" id="check-btn" class="primary">Check</button>
+        </div>
+      </form>
+      <p id="feedback" class="message"></p>
+      <div id="results" class="table-wrap"></div>
+    </section>
+
+    <footer>
+      Nutrition data from API Ninjas (<a href="https://api-ninjas.com" target="_blank" rel="noopener noreferrer">https://api-ninjas.com</a>).
+    </footer>
+  </div>
+
+  <script>
+    // ==================== DATA ====================
+
+    const STORAGE_KEY = "api_ninjas_key";
+    const API_URL = "https://api.api-ninjas.com/v1/nutrition?query=";
+
+    const PREFERRED_FIELD_ORDER = [
+      "serving_size_g",
+      "calories",
+      "fat_total_g",
+      "fat_saturated_g",
+      "protein_g",
+      "carbohydrates_total_g",
+      "fiber_g",
+      "sugar_g",
+      "sodium_mg",
+      "potassium_mg",
+      "cholesterol_mg"
+    ];
+
+    function getStoredApiKey() {
+      return localStorage.getItem(STORAGE_KEY) || "";
+    }
+
+    function storeApiKey(key) {
+      localStorage.setItem(STORAGE_KEY, key);
+    }
+
+    function removeApiKey() {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+
+    async function fetchNutrition(query, apiKey) {
+      const url = API_URL + encodeURIComponent(query);
+      const response = await fetch(url, {
+        headers: { "X-Api-Key": apiKey }
+      });
+
+      const rawText = await response.text();
+      if (!response.ok) {
+        const message = extractErrorMessage(rawText, response.statusText);
+        throw { status: response.status, message };
+      }
+
+      return rawText ? JSON.parse(rawText) : [];
+    }
+
+    // ==================== PROCESSING ====================
+
+    function extractErrorMessage(rawText, fallbackText) {
+      if (!rawText) {
+        return fallbackText || "Unknown error";
+      }
+      try {
+        const parsed = JSON.parse(rawText);
+        if (parsed && typeof parsed === "object") {
+          return parsed.error || parsed.message || rawText;
+        }
+      } catch (_) {
+        // Response body is plain text rather than JSON
+      }
+      return rawText;
+    }
+
+    function isValidNumber(value) {
+      return typeof value === "number" && Number.isFinite(value);
+    }
+
+    function formatNumber(value) {
+      return Number(value.toFixed(2));
+    }
+
+    function getNumericColumns(items) {
+      const discovered = new Set();
+      for (const item of items) {
+        if (item && typeof item === "object") {
+          for (const [key, value] of Object.entries(item)) {
+            if (isValidNumber(value)) {
+              discovered.add(key);
+            }
+          }
+        }
+      }
+
+      const ordered = PREFERRED_FIELD_ORDER.filter((field) => discovered.has(field));
+      for (const field of discovered) {
+        if (!ordered.includes(field)) {
+          ordered.push(field);
+        }
+      }
+      return ordered;
+    }
+
+    function buildTableModel(items) {
+      const columns = getNumericColumns(items);
+      const totals = {};
+      for (const col of columns) {
+        totals[col] = 0;
+      }
+
+      const rows = items.map((item) => {
+        const values = {};
+        for (const col of columns) {
+          const rawVal = item[col];
+          if (isValidNumber(rawVal)) {
+            values[col] = formatNumber(rawVal);
+            totals[col] += rawVal;
+          } else {
+            values[col] = null;
+          }
+        }
+        return {
+          name: item.name || "Unknown",
+          values
+        };
+      });
+
+      for (const col of columns) {
+        totals[col] = formatNumber(totals[col]);
+      }
+
+      return { columns, rows, totals };
+    }
+
+    // ==================== PRESENTATION ====================
+
+    const apiKeyInput = document.getElementById("api-key-input");
+    const saveKeyBtn = document.getElementById("save-key-btn");
+    const forgetKeyBtn = document.getElementById("forget-key-btn");
+    const keyStatusEl = document.getElementById("key-status");
+    const nutritionForm = document.getElementById("nutrition-form");
+    const foodInput = document.getElementById("food-input");
+    const feedbackEl = document.getElementById("feedback");
+    const resultsEl = document.getElementById("results");
+
+    function renderKeyStatus() {
+      const savedKey = getStoredApiKey();
+      keyStatusEl.textContent = savedKey
+        ? "An API key is saved."
+        : "No API key is saved.";
+    }
+
+    function renderFeedback(text, isError = false) {
+      feedbackEl.textContent = text;
+      feedbackEl.className = isError ? "message error" : "message";
+    }
+
+    function clearResults() {
+      resultsEl.innerHTML = "";
+    }
+
+    function renderNutritionTable(model) {
+      clearResults();
+
+      if (model.rows.length === 0) {
+        renderFeedback("No nutrition items found for that query.");
+        return;
+      }
+
+      const table = document.createElement("table");
+
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      const nameHeader = document.createElement("th");
+      nameHeader.textContent = "name";
+      headerRow.appendChild(nameHeader);
+
+      for (const col of model.columns) {
+        const th = document.createElement("th");
+        th.textContent = col;
+        headerRow.appendChild(th);
+      }
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      for (const row of model.rows) {
+        const tr = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        nameCell.textContent = row.name;
+        tr.appendChild(nameCell);
+
+        for (const col of model.columns) {
+          const td = document.createElement("td");
+          td.textContent = row.values[col] !== null ? row.values[col] : "-";
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+
+      const tfoot = document.createElement("tfoot");
+      const totalRow = document.createElement("tr");
+      const totalLabel = document.createElement("td");
+      totalLabel.textContent = "Total";
+      totalRow.appendChild(totalLabel);
+
+      for (const col of model.columns) {
+        const td = document.createElement("td");
+        td.textContent = model.totals[col];
+        totalRow.appendChild(td);
+      }
+      tfoot.appendChild(totalRow);
+      table.appendChild(tfoot);
+
+      resultsEl.appendChild(table);
+    }
+
+    saveKeyBtn.addEventListener("click", () => {
+      const trimmedKey = apiKeyInput.value.trim();
+      if (!trimmedKey) {
+        renderFeedback("Please enter an API key to save.", true);
+        return;
+      }
+      storeApiKey(trimmedKey);
+      apiKeyInput.value = "";
+      renderKeyStatus();
+      renderFeedback("");
+    });
+
+    forgetKeyBtn.addEventListener("click", () => {
+      removeApiKey();
+      apiKeyInput.value = "";
+      renderKeyStatus();
+      renderFeedback("");
+    });
+
+    nutritionForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearResults();
+
+      const apiKey = getStoredApiKey();
+      if (!apiKey) {
+        renderFeedback("Paste and save your API key first.");
+        return;
+      }
+
+      const query = foodInput.value.trim();
+      if (!query) {
+        renderFeedback("Please enter what you ate.");
+        return;
+      }
+
+      renderFeedback("Checking nutrition...");
+
+      try {
+        const items = await fetchNutrition(query, apiKey);
+        renderFeedback("");
+        const tableModel = buildTableModel(items);
+        renderNutritionTable(tableModel);
+      } catch (err) {
+        if (err && typeof err.status === "number") {
+          renderFeedback(`Error ${err.status}: ${err.message}`, true);
+        } else {
+          renderFeedback(`Request failed: ${err.message || "Network error"}`, true);
+        }
+      }
+    });
+
+    renderKeyStatus();
+  </script>
+</body>
+</html>
